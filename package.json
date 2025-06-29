@@ -1,0 +1,38 @@
+{
+  "name": "sound-stream-ripper-nodejs",
+  "version": "1.0.0",
+  "description": "A modern Node.js + React application to download music from Spotify URLs",
+  "main": "server.js",
+  "scripts": {
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "start": "cd backend && npm start",
+    "server": "cd backend && npm run dev",
+    "client": "cd frontend && npm start",
+    "build": "cd frontend && npm run build",
+    "install-all": "npm install && cd backend && npm install && cd ../frontend && npm install",
+    "kill-ports": "sudo lsof -t -i tcp:3000 | xargs kill -9 2>/dev/null || true && sudo lsof -t -i tcp:5001 | xargs kill -9 2>/dev/null || true",
+    "heroku-postbuild": "npm run install-all && npm run build",
+    "deploy:setup": "npm run install-all && npm run build"
+  },
+  "dependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=8.0.0"
+  },
+  "keywords": [
+    "spotify",
+    "downloader",
+    "youtube",
+    "mp3",
+    "nodejs",
+    "react"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/sound-stream-ripper.git"
+  }
+}

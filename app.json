@@ -1,0 +1,41 @@
+{
+  "name": "Sound Stream Ripper",
+  "description": "A modern Node.js + React application to download music from Spotify URLs",
+  "repository": "https://github.com/yourusername/sound-stream-ripper",
+  "logo": "https://node-js-sample.herokuapp.com/node.png",
+  "keywords": ["node", "express", "react", "spotify", "downloader"],
+  "image": "heroku/nodejs",
+  "buildpacks": [
+    {
+      "url": "heroku/nodejs"
+    }
+  ],
+  "env": {
+    "NODE_ENV": {
+      "description": "Node environment",
+      "value": "production"
+    },
+    "SPOTIFY_CLIENT_ID": {
+      "description": "Spotify API Client ID from https://developer.spotify.com/dashboard",
+      "required": true
+    },
+    "SPOTIFY_CLIENT_SECRET": {
+      "description": "Spotify API Client Secret from https://developer.spotify.com/dashboard",
+      "required": true
+    },
+    "FRONTEND_URL": {
+      "description": "Frontend URL for CORS (will be set automatically by Heroku)",
+      "required": false
+    }
+  },
+  "formation": {
+    "web": {
+      "quantity": 1,
+      "size": "basic"
+    }
+  },
+  "addons": [],
+  "scripts": {
+    "postdeploy": "echo 'App deployed successfully!'"
+  }
+} 
