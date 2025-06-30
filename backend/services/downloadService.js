@@ -1,4 +1,4 @@
-const youtubeDl = require('youtube-dl-exec');
+const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
@@ -12,10 +12,9 @@ class DownloadService {
     // Set ffmpeg path if needed (you might need to install ffmpeg separately)
     // ffmpeg.setFfmpegPath('/path/to/ffmpeg');
     
-    // Configure youtube-dl-exec to use system yt-dlp
-    this.ytDlpOptions = {
-      binaryPath: '/opt/homebrew/bin/yt-dlp' // Use system yt-dlp instead of bundled
-    };
+    // Configure youtube-dl-exec to use the bundled binary
+    // The issue was with spaces in directory paths, so we'll use the bundled version
+    this.ytDlpOptions = {};
   }
 
   async searchYoutube(query) {
@@ -94,79 +93,63 @@ class DownloadService {
         const absoluteOutputPath = path.resolve(outputPath);
         const outputTemplate = path.join(absoluteOutputPath, `${sanitizedTitle}.%(ext)s`);
         
-        // Download using youtube-dl-exec with system yt-dlp
-        const output = await youtubeDl(youtubeUrl, {
-          extractAudio: true,
-          audioFormat: 'mp3',
-          audioQuality: 0, // Best quality
-          output: outputTemplate,
-          restrictFilenames: true,
-          noCheckCertificate: true,
-          noWarnings: true,
-          preferFreeFormats: true,
-          addHeader: [
-            'referer:youtube.com',
-            'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-          ]
-        }, this.ytDlpOptions);
+        // Use bundled yt-dlp binary directly with spawn
+        const ytDlpPath = path.join(__dirname, '..', 'node_modules', 'youtube-dl-exec', 'bin', 'yt-dlp');
+        
+        const args = [
+          youtubeUrl,
+          '--extract-audio',
+          '--audio-format', 'mp3',
+          '--audio-quality', '0',
+          '--output', outputTemplate,
+          '--restrict-filenames',
+          '--no-check-certificate',
+          '--no-warnings',
+          '--prefer-free-formats'
+        ];
 
-        console.log('Download completed:', output);
-        resolve({ skipped: false, filePath: finalFilePath });
+        console.log('Executing:', ytDlpPath);
+        console.log('Args:', args);
+        console.log('Working directory:', absoluteOutputPath);
+        console.log('Output template:', outputTemplate);
+        
+        const ytDlpProcess = spawn(ytDlpPath, args, {
+          cwd: absoluteOutputPath,
+          stdio: ['pipe', 'pipe', 'pipe']
+        });
+
+        let stdout = '';
+        let stderr = '';
+
+        ytDlpProcess.stdout.on('data', (data) => {
+          stdout += data.toString();
+          console.log('yt-dlp stdout:', data.toString().trim());
+        });
+
+        ytDlpProcess.stderr.on('data', (data) => {
+          stderr += data.toString();
+          console.log('yt-dlp stderr:', data.toString().trim());
+        });
+
+        ytDlpProcess.on('close', (code) => {
+          if (code === 0) {
+            console.log('Download completed successfully');
+            resolve({ skipped: false, filePath: finalFilePath });
+          } else {
+            console.error(`yt-dlp process exited with code ${code}`);
+            console.error('stderr:', stderr);
+            reject(new Error(`Failed to download from YouTube: Process exited with code ${code}`));
+          }
+        });
+
+        ytDlpProcess.on('error', (error) => {
+          console.error('yt-dlp process error:', error);
+          reject(new Error(`Failed to download from YouTube: ${error.message}`));
+        });
 
       } catch (error) {
         console.error('Download error:', error);
-        
-        // Fallback: try with simpler options
-        try {
-          console.log('Trying fallback download method...');
-          
-          const sanitizedTitle = this.sanitizeFilename(`${trackInfo.artist_name} - ${trackInfo.track_title}`);
-          const absoluteOutputPath = path.resolve(outputPath);
-          const tempOutputTemplate = path.join(absoluteOutputPath, `temp_${Date.now()}.%(ext)s`);
-          const finalFilePath = path.join(outputPath, `${sanitizedTitle}.mp3`);
-          
-          await youtubeDl(youtubeUrl, {
-            format: 'bestaudio',
-            output: tempOutputTemplate,
-            noCheckCertificate: true,
-            noWarnings: true
-          }, this.ytDlpOptions);
-          
-          // Find the downloaded file
-          const files = fs.readdirSync(absoluteOutputPath);
-          const downloadedFile = files.find(file => file.startsWith(`temp_${Date.now().toString().slice(0, -3)}`));
-          
-          if (downloadedFile) {
-            const inputFile = path.join(absoluteOutputPath, downloadedFile);
-            
-            // Convert to MP3 using ffmpeg
-            ffmpeg(inputFile)
-              .toFormat('mp3')
-              .audioBitrate(320)
-              .on('error', (ffmpegError) => {
-                console.error('FFmpeg error:', ffmpegError);
-                // Clean up temp file
-                try {
-                  if (fs.existsSync(inputFile)) fs.unlinkSync(inputFile);
-                } catch (e) {}
-                reject(new Error('Failed to convert audio to MP3'));
-              })
-              .on('end', () => {
-                // Clean up temp file
-                try {
-                  if (fs.existsSync(inputFile)) fs.unlinkSync(inputFile);
-                } catch (e) {}
-                resolve({ skipped: false, filePath: finalFilePath });
-              })
-              .save(finalFilePath);
-          } else {
-            reject(new Error('Downloaded file not found'));
-          }
-            
-        } catch (fallbackError) {
-          console.error('Fallback download also failed:', fallbackError);
-          reject(new Error(`Failed to download from YouTube: ${error.message}`));
-        }
+        reject(new Error(`Failed to download from YouTube: ${error.message}`));
       }
     });
   }

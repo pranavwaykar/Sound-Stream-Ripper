@@ -79,7 +79,7 @@ function App() {
     
     const intervalId = setInterval(async () => {
       try {
-        const response = await api.get(`/download-status/${downloadId}`);
+        const response = await api.get(`/download/${downloadId}/status`);
         setStatus(response.data);
         
         if (['completed', 'error'].includes(response.data.status)) {
@@ -103,7 +103,7 @@ function App() {
       setDownloading(true);
       
       console.log('Starting download for URL:', url);
-      const response = await api.post('/start-download', {
+      const response = await api.post('/download', {
         url,
         downloadPath,
         fileExistsAction
@@ -293,9 +293,9 @@ function App() {
             </div>
             <div className="card-footer text-center text-muted">
               <small>
-                🚀 Powered by Node.js + React | 
-                🎵 Spotify API + YouTube | 
-                ⚡ Built with ❤️
+                 Powered by Node.js + React | 
+                 Spotify API + YouTube | 
+                 Built with ❤️ by @pranavwaykar
               </small>
             </div>
           </div>
