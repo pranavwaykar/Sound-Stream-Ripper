@@ -1,10 +1,10 @@
 [phases.setup]
-nixPkgs = ["nodejs_18", "ffmpeg", "python3"]
+nixPkgs = ["nodejs_18", "ffmpeg"]
 
 [phases.install]
 cmds = [
   "npm install",
-  "cd frontend && npm install",
+  "cd frontend && npm install", 
   "cd backend && npm install"
 ]
 
@@ -14,4 +14,7 @@ cmds = [
 ]
 
 [start]
-cmd = "npm start" 
+cmd = "npm start"
+
+[variables]
+NODE_ENV = "production" 
