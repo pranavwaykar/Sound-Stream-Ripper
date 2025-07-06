@@ -1,20 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import './App.css';
 
-const API_URL = 'http://localhost:5001/api';
-
-// Create a configured axios instance
-const api = axios.create({
-  baseURL: API_URL,
-  headers: {
-    'Content-Type': 'application/json'
-  },
-  withCredentials: true
-});
-
 interface DownloadStatus {
+  id: string;
   status: string;
   progress: number;
   message: string;
@@ -25,284 +14,350 @@ interface DownloadStatus {
 }
 
 function App() {
-  const [url, setUrl] = useState<string>('');
-  const [downloadPath, setDownloadPath] = useState<string>('');
-  const [fileExistsAction, setFileExistsAction] = useState<string>('SKIP');
-  const [downloading, setDownloading] = useState<boolean>(false);
-  const [downloadId, setDownloadId] = useState<string | null>(null);
-  const [status, setStatus] = useState<DownloadStatus>({
-    status: '',
-    progress: 0,
-    message: '',
-    log: [],
-    completed: 0,
-    total: 0,
-    errors: []
-  });
-  const [error, setError] = useState<string>('');
-  const [validUrl, setValidUrl] = useState<boolean | null>(null);
-  
-  // Check URL validity when input changes
+  const [url, setUrl] = useState('');
+  const [format, setFormat] = useState('mp3');
+  const [quality, setQuality] = useState('192');
+  const [isLoading, setIsLoading] = useState(false);
+  const [downloadStatus, setDownloadStatus] = useState<DownloadStatus | null>(null);
+
+  // Check if URL is valid Spotify URL
+  const isValidSpotifyUrl = (url: string) => {
+    const spotifyRegex = /^https:\/\/open\.spotify\.com\/(track|album|playlist)\/[a-zA-Z0-9]+(\?.*)?$/;
+    return spotifyRegex.test(url);
+  };
+
+  // Real-time URL validation
   useEffect(() => {
     const checkUrl = async () => {
-      if (url.trim() === '') {
-        setValidUrl(null);
-        return;
-      }
-      
-      try {
-        console.log('Validating URL:', url);
-        const response = await api.post('/validate', { url });
-        console.log('Validation response:', response.data);
-        
-        setValidUrl(response.data.valid);
-        if (!response.data.valid) {
-          setError(response.data.error);
-        } else {
-          setError('');
+      if (url && isValidSpotifyUrl(url)) {
+        try {
+          const response = await fetch(`http://localhost:5001/api/validate`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ url }),
+          });
+          const data = await response.json();
+          if (data.valid) {
+            // URL is valid, could show preview info here
+          }
+        } catch (error) {
+          console.error('Error validating URL:', error);
         }
-      } catch (err: any) {
-        console.error('Validation error:', err);
-        console.error('Error details:', err.response || err.message);
-        setValidUrl(false);
-        setError('Error validating URL: ' + (err.response?.data?.error || err.message));
       }
     };
-    
-    const timer = setTimeout(checkUrl, 500); // Debounce URL validation
-    return () => clearTimeout(timer);
+
+    const timeoutId = setTimeout(checkUrl, 500);
+    return () => clearTimeout(timeoutId);
   }, [url]);
-  
-  // Poll download status
-  useEffect(() => {
-    if (!downloadId || !downloading) return;
-    
-    const intervalId = setInterval(async () => {
-      try {
-        const response = await api.get(`/download/${downloadId}/status`);
-        setStatus(response.data);
-        
-        if (['completed', 'error'].includes(response.data.status)) {
-          setDownloading(false);
-        }
-      } catch (err: any) {
-        console.error('Error fetching download status:', err);
-        console.error('Status error details:', err.response || err.message);
-      }
-    }, 1000);
-    
-    return () => clearInterval(intervalId);
-  }, [downloadId, downloading]);
-  
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validUrl) return;
     
+    if (!isValidSpotifyUrl(url)) {
+      alert('Please enter a valid Spotify URL');
+      return;
+    }
+
+    setIsLoading(true);
+    setDownloadStatus(null);
+
     try {
-      setError('');
-      setDownloading(true);
-      
-      console.log('Starting download for URL:', url);
-      const response = await api.post('/download', {
-        url,
-        downloadPath,
-        fileExistsAction
+      const response = await fetch('http://localhost:5001/api/download', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          url,
+          format,
+          quality,
+        }),
       });
+
+      if (!response.ok) {
+        throw new Error('Download failed');
+      }
+
+      const data = await response.json();
       
-      console.log('Download started:', response.data);
-      setDownloadId(response.data.downloadId);
-    } catch (err: any) {
-      console.error('Download start error:', err);
-      console.error('Download error details:', err.response || err.message);
-      setError('Error starting download: ' + (err.response?.data?.error || err.message));
-      setDownloading(false);
+      // Start polling for status updates using the correct endpoint
+      const pollInterval = setInterval(async () => {
+        try {
+          const statusResponse = await fetch(`http://localhost:5001/api/download/${data.downloadId}/status`);
+          if (!statusResponse.ok) {
+            throw new Error('Failed to get status');
+          }
+          const statusData = await statusResponse.json();
+          
+          // Debug logging
+          console.log('📊 Frontend received status:', statusData);
+          
+          setDownloadStatus(statusData);
+          
+          if (statusData.status === 'completed' || statusData.status === 'error' || statusData.status === 'failed') {
+            console.log('🎉 Download completed, stopping polling');
+            clearInterval(pollInterval);
+            setIsLoading(false);
+          }
+        } catch (error) {
+          console.error('Error polling status:', error);
+          clearInterval(pollInterval);
+          setIsLoading(false);
+        }
+      }, 1000);
+
+    } catch (error) {
+      console.error('Error:', error);
+      setDownloadStatus({
+        id: '',
+        status: 'failed',
+        progress: 0,
+        message: 'Download failed. Please try again.',
+        log: [],
+        completed: 0,
+        total: 0,
+        errors: [error instanceof Error ? error.message : 'Unknown error'],
+      });
+      setIsLoading(false);
     }
   };
-  
+
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'processing': return 'info';
-      case 'completed': return 'success';
-      case 'error': return 'danger';
-      default: return 'secondary';
+      case 'completed': return 'bg-success';
+      case 'failed': 
+      case 'error': return 'bg-danger';
+      case 'processing': 
+      case 'started': return 'bg-warning';
+      default: return 'bg-secondary';
+    }
+  };
+
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case 'started': return 'INITIALIZING...';
+      case 'processing': return 'PROCESSING...';
+      case 'completed': return 'COMPLETED';
+      case 'error': return 'ERROR';
+      case 'failed': return 'FAILED';
+      default: return status.toUpperCase();
+    }
+  };
+
+  const handleDownload = async () => {
+    if (!downloadStatus?.id) return;
+    
+    try {
+      const response = await fetch(`http://localhost:5001/api/download/${downloadStatus.id}/file`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to download file');
+      }
+      
+      // Get the filename from the response headers
+      const contentDisposition = response.headers.get('Content-Disposition');
+      const filename = contentDisposition 
+        ? contentDisposition.split('filename=')[1]?.replace(/"/g, '') 
+        : 'download.mp3';
+      
+      // Create blob and download
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      console.log(`📥 Downloaded: ${filename}`);
+    } catch (error) {
+      console.error('Download failed:', error);
+      alert('Download failed. Please try again.');
     }
   };
 
   return (
     <div className="container mt-5">
-      <div className="row justify-content-center">
-        <div className="col-md-10">
-          <div className="card shadow">
-            <div className="card-header bg-dark text-white">
-              <h1 className="text-center mb-0">🎵 Sound Stream Ripper</h1>
-              <p className="text-center mb-0 mt-2">Download music from Spotify via YouTube</p>
+      {/* Matrix-Style Music Notes Rain */}
+      <div className="music-matrix">
+        {Array.from({ length: 40 }, (_, i) => (
+          <div key={i} className="music-column">
+            <span className="music-note-char">♪</span>
+            <span className="music-note-char">♫</span>
+            <span className="music-note-char">♬</span>
+            <span className="music-note-char">♩</span>
+            <span className="music-note-char">♪</span>
+            <span className="music-note-char">♫</span>
+            <span className="music-note-char">♬</span>
+            <span className="music-note-char">♩</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Main Application Card */}
+      <div className="card shadow-lg" style={{ position: 'relative', zIndex: 2 }}>
+        <div className="card-header bg-primary text-white">
+          <h2 className="mb-0">🎵 Sound Stream Ripper</h2>
+          <small>Download music from Spotify URLs</small>
+        </div>
+        <div className="card-body">
+          <form onSubmit={handleSubmit}>
+            <div className="mb-3">
+              <label htmlFor="url" className="form-label">
+                Spotify URL
+              </label>
+              <input
+                type="url"
+                className="form-control"
+                id="url"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="https://open.spotify.com/track/..."
+                required
+              />
             </div>
-            <div className="card-body">
-              <form onSubmit={handleSubmit}>
-                <div className="mb-3">
-                  <label className="form-label">
-                    <strong>Spotify URL (Track or Playlist)</strong>
-                  </label>
-                  <input
-                    type="text"
-                    className={`form-control ${validUrl === true ? 'is-valid' : ''} ${validUrl === false ? 'is-invalid' : ''}`}
-                    value={url}
-                    onChange={(e) => setUrl(e.target.value)}
-                    placeholder="https://open.spotify.com/track/... or https://open.spotify.com/playlist/..."
-                  />
-                  {validUrl === true && (
-                    <div className="valid-feedback">
-                      Valid Spotify URL ✓
-                    </div>
-                  )}
-                  {validUrl === false && (
-                    <div className="invalid-feedback">
-                      {error}
-                    </div>
-                  )}
-                </div>
-                
-                <div className="mb-3">
-                  <label className="form-label">
-                    <strong>Download Location (Optional)</strong>
-                  </label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    value={downloadPath}
-                    onChange={(e) => setDownloadPath(e.target.value)}
-                    placeholder="Leave blank for default location (./downloads)"
-                  />
-                  <div className="form-text">
-                    Specify a custom path or leave empty to use the default downloads folder
-                  </div>
-                </div>
-                
-                <div className="mb-3">
-                  <label className="form-label">
-                    <strong>If file exists:</strong>
-                  </label>
-                  <select 
-                    className="form-select"
-                    value={fileExistsAction}
-                    onChange={(e) => setFileExistsAction(e.target.value)}
-                  >
-                    <option value="SKIP">Skip existing files</option>
-                    <option value="REPLACE">Replace existing files</option>
-                  </select>
-                </div>
-                
-                <button 
-                  type="submit" 
-                  className="btn btn-primary w-100 mt-3"
-                  disabled={!validUrl || downloading}
-                >
-                  {downloading ? (
-                    <>
-                      <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                      Downloading...
-                    </>
-                  ) : (
-                    <>
-                      <i className="bi bi-download me-2"></i>
-                      Start Download
-                    </>
-                  )}
-                </button>
-              </form>
-              
-              {error && !downloading && (
-                <div className="mt-3 alert alert-danger">
-                  <strong>Error:</strong> {error}
-                </div>
+            
+            <div className="mb-3">
+              <label htmlFor="format" className="form-label">
+                Download Format
+              </label>
+              <select
+                className="form-select"
+                id="format"
+                value={format}
+                onChange={(e) => setFormat(e.target.value)}
+              >
+                <option value="mp3">MP3</option>
+                <option value="wav">WAV</option>
+                <option value="flac">FLAC</option>
+              </select>
+            </div>
+
+            <div className="mb-3">
+              <label htmlFor="quality" className="form-label">
+                Quality
+              </label>
+              <select
+                className="form-select"
+                id="quality"
+                value={quality}
+                onChange={(e) => setQuality(e.target.value)}
+              >
+                <option value="128">128 kbps</option>
+                <option value="192">192 kbps</option>
+                <option value="320">320 kbps</option>
+              </select>
+            </div>
+
+            <button
+              type="submit"
+              className="btn btn-primary w-100"
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <>
+                  <span className="spinner-border spinner-border-sm me-2" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <i className="fas fa-download me-2"></i>
+                  Download
+                </>
               )}
+            </button>
+          </form>
+
+          {/* Status Display */}
+          {downloadStatus && (
+            <div className="mt-4">
+              <div className="d-flex justify-content-between align-items-center mb-2">
+                <span className="fw-bold">Status:</span>
+                <span className={`badge ${getStatusColor(downloadStatus.status)}`}>
+                  {getStatusText(downloadStatus.status)}
+                </span>
+              </div>
               
-              {downloading && (
-                <div className="mt-4">
-                  <div className={`alert alert-${getStatusColor(status.status)} mb-3`}>
-                    <strong>Status:</strong> {status.message || 'Preparing download...'}
-                  </div>
-                  
-                  <div className="row mb-3">
-                    <div className="col-md-6">
-                      <h6>Progress: {status.completed || 0}/{status.total || '?'} tracks</h6>
-                    </div>
-                    <div className="col-md-6 text-end">
-                      <h6>{status.progress || 0}% Complete</h6>
-                    </div>
-                  </div>
-                  
-                  <div className="progress mb-3" style={{ height: '20px' }}>
+              {downloadStatus.progress > 0 && (
+                <div className="mb-3">
+                  <div className="progress">
                     <div
-                      className={`progress-bar progress-bar-striped progress-bar-animated bg-${getStatusColor(status.status)}`}
+                      className="progress-bar"
                       role="progressbar"
-                      style={{width: `${status.progress || 0}%`}}
-                      aria-valuenow={status.progress || 0}
+                      style={{ width: `${downloadStatus.progress}%` }}
+                      aria-valuenow={downloadStatus.progress}
                       aria-valuemin={0}
                       aria-valuemax={100}
                     >
-                      {status.progress || 0}%
+                      {downloadStatus.progress}%
                     </div>
                   </div>
-                  
-                  <div className="card mt-3">
-                    <div className="card-header">
-                      <h6 className="mb-0">📋 Download Log</h6>
-                    </div>
-                    <div className="card-body" style={{maxHeight: '300px', overflow: 'auto', backgroundColor: '#f8f9fa'}}>
-                      {status.log && status.log.length > 0 ? (
-                        <div className="list-group list-group-flush">
-                          {status.log.map((entry, i) => (
-                            <div key={i} className="list-group-item list-group-item-action border-0 py-1 px-2 small">
-                              {entry}
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-muted mb-0">No log entries yet...</p>
-                      )}
-                    </div>
-                  </div>
-                  
-                  {status.errors && status.errors.length > 0 && (
-                    <div className="mt-3 alert alert-warning">
-                      <h6>⚠️ Errors encountered:</h6>
-                      <ul className="mb-0">
-                        {status.errors.map((error, i) => (
-                          <li key={i} className="small">{error}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
                 </div>
               )}
-              
-              {status.status === 'completed' && (
-                <div className="mt-3 alert alert-success">
-                  <h5>🎉 Download completed!</h5>
-                  <p className="mb-0">
-                    Successfully downloaded <strong>{status.completed}</strong> of <strong>{status.total}</strong> tracks.
-                  </p>
-                  {status.completed < status.total && (
-                    <small className="text-muted">
-                      Some tracks may have been skipped or failed to download.
-                    </small>
-                  )}
+
+              {downloadStatus.message && (
+                <div className="alert alert-info">
+                  {downloadStatus.message}
+                </div>
+              )}
+
+              {downloadStatus.errors && downloadStatus.errors.length > 0 && (
+                <div className="alert alert-danger">
+                  <strong>Errors:</strong>
+                  <ul className="mb-0 mt-2">
+                    {downloadStatus.errors.map((error, index) => (
+                      <li key={index}>{error}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {downloadStatus.log && downloadStatus.log.length > 0 && (
+                <div className="mt-3">
+                  <details>
+                    <summary className="btn btn-outline-secondary btn-sm">
+                      View Log ({downloadStatus.log.length} entries)
+                    </summary>
+                    <div className="mt-2 p-3 bg-dark text-light rounded" style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                      <pre className="mb-0 small">
+                        {downloadStatus.log.join('\n')}
+                      </pre>
+                    </div>
+                  </details>
+                </div>
+              )}
+
+              {downloadStatus.status === 'completed' && (
+                <div className="mt-3">
+                  <div className="alert alert-success">
+                    <i className="fas fa-check-circle me-2"></i>
+                    Download completed successfully! 
+                    {downloadStatus.completed > 0 && (
+                      <span> ({downloadStatus.completed} file{downloadStatus.completed > 1 ? 's' : ''} downloaded)</span>
+                    )}
+                                      </div>
+                   {downloadStatus.status === 'completed' && (
+                     <button
+                       type="button"
+                       className="btn btn-download w-100 mt-3"
+                       onClick={handleDownload}
+                     >
+                       <i className="fas fa-download me-2"></i>
+                       Save To Your Device
+                     </button>
+                   )}
                 </div>
               )}
             </div>
-            <div className="card-footer text-center text-muted">
-              <small>
-                 Powered by Node.js + React | 
-                 Spotify API + YouTube | 
-                 Built with ❤️ by @pranavwaykar
-              </small>
-            </div>
-          </div>
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-export default App;
+export default App; 

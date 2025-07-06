@@ -95,7 +95,7 @@ app.post('/api/validate', async (req, res) => {
 // Start download endpoint
 app.post('/api/download', async (req, res) => {
   try {
-    const { url, downloadPath, fileExistsAction } = req.body;
+    const { url, format, quality, downloadPath, fileExistsAction } = req.body;
     
     if (!url) {
       return res.status(400).json({ 
@@ -113,6 +113,8 @@ app.post('/api/download', async (req, res) => {
     downloads.set(downloadId, {
       id: downloadId,
       url,
+      format: format || 'mp3',
+      quality: quality || '192',
       status: 'started',
       progress: 0,
       completed: 0,
@@ -166,7 +168,93 @@ app.get('/api/download/:id/status', (req, res) => {
     });
   }
   
+  // Log the status request for debugging
+  console.log(`📊 Status request for ${id}: ${downloadState.status}`);
+  
   res.json(downloadState);
+});
+
+// List all downloads endpoint (for debugging)
+app.get('/api/downloads/status', (req, res) => {
+  const allDownloads = Array.from(downloads.entries()).map(([id, state]) => ({
+    id,
+    status: state.status,
+    message: state.message,
+    progress: state.progress,
+    completed: state.completed,
+    total: state.total,
+    errors: state.errors.length
+  }));
+  
+  res.json(allDownloads);
+});
+
+// Download completed file endpoint
+app.get('/api/download/:id/file', (req, res) => {
+  const { id } = req.params;
+  const downloadState = downloads.get(id);
+  
+  if (!downloadState) {
+    return res.status(404).json({ 
+      error: 'Download not found' 
+    });
+  }
+  
+  if (downloadState.status !== 'completed') {
+    return res.status(400).json({ 
+      error: 'Download not completed yet' 
+    });
+  }
+  
+  // Get the first completed file (for single track downloads)
+  const completedFiles = downloadState.completedFiles || [];
+  
+  if (completedFiles.length === 0) {
+    return res.status(404).json({ 
+      error: 'No files found' 
+    });
+  }
+  
+  const filePath = completedFiles[0];
+  const fileName = path.basename(filePath);
+  
+  // Check if file exists
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ 
+      error: 'File not found on server' 
+    });
+  }
+  
+  console.log(`📥 Serving download for ${fileName}`);
+  
+  // Set appropriate headers for download
+  res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+  res.setHeader('Content-Type', 'audio/mpeg');
+  
+  // Stream the file
+  const fileStream = fs.createReadStream(filePath);
+  fileStream.pipe(res);
+  
+  fileStream.on('error', (err) => {
+    console.error('Error streaming file:', err);
+    res.status(500).json({ error: 'Error downloading file' });
+  });
+});
+
+// List completed files endpoint
+app.get('/api/downloads/files', (req, res) => {
+  const completedDownloads = Array.from(downloads.entries())
+    .filter(([id, state]) => state.status === 'completed')
+    .map(([id, state]) => ({
+      id,
+      files: (state.completedFiles || []).map(filePath => ({
+        filename: path.basename(filePath),
+        size: fs.existsSync(filePath) ? fs.statSync(filePath).size : 0,
+        downloadUrl: `/api/download/${id}/file`
+      }))
+    }));
+  
+  res.json(completedDownloads);
 });
 
 // Get download logs endpoint

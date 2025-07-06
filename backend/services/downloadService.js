@@ -211,6 +211,7 @@ class DownloadService {
         fs.mkdirSync(downloadPath, { recursive: true });
       }
 
+      downloadState.status = 'processing';
       downloadState.message = 'Fetching track information from Spotify...';
       downloads.set(downloadId, downloadState);
 
@@ -224,6 +225,7 @@ class DownloadService {
 
       const startTime = Date.now();
       let downloadedCount = 0;
+      const completedFiles = []; // Track completed files for download
 
       for (let i = 0; i < tracks.length; i++) {
         const track = tracks[i];
@@ -246,12 +248,17 @@ class DownloadService {
           
           if (result.skipped) {
             downloadState.log.push(`Skipped: ${track.artist_name} - ${track.track_title} (already exists)`);
+            if (result.filePath && fs.existsSync(result.filePath)) {
+              completedFiles.push(result.filePath);
+            }
           } else {
             downloadState.message = `Setting metadata for: ${track.track_title}`;
             downloads.set(downloadId, downloadState);
             
             // Set metadata
             await this.setMetadata(result.filePath, track);
+            
+            completedFiles.push(result.filePath);
             
             downloadState.log.push(`✓ Downloaded: ${track.artist_name} - ${track.track_title}`);
             downloadedCount++;
@@ -273,9 +280,13 @@ class DownloadService {
       const endTime = Date.now();
       const timeTaken = Math.round((endTime - startTime) / 1000);
 
+      // Ensure the completion status is set
       downloadState.status = 'completed';
-      downloadState.message = `Download completed. ${downloadedCount}/${tracks.length} songs downloaded in ${timeTaken} seconds`;
+      downloadState.message = `Download completed: ${downloadState.completed}/${downloadState.total} songs in ${Math.round((Date.now() - downloadState.startTime) / 1000)}s`;
+      downloadState.progress = 100;
+      downloadState.completedFiles = completedFiles; // Track completed files for download
       downloads.set(downloadId, downloadState);
+      
 
     } catch (error) {
       console.error('Process download error:', error);
@@ -283,7 +294,8 @@ class DownloadService {
       downloadState.message = `Error: ${error.message}`;
       downloadState.errors.push(error.message);
       downloads.set(downloadId, downloadState);
-    }
+      
+   }
   }
 }
 
