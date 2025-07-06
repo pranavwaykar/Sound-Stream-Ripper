@@ -13,8 +13,14 @@ const PORT = process.env.PORT || 5001;
 // Enable CORS for all routes
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
-    ? process.env.FRONTEND_URL || 'https://your-app.herokuapp.com'
-    : 'http://localhost:3000',
+    ? [
+        process.env.FRONTEND_URL,
+        /\.railway\.app$/,
+        /\.render\.com$/,
+        /\.herokuapp\.com$/,
+        /\.vercel\.app$/
+      ].filter(Boolean)
+    : ['http://localhost:3000', 'http://localhost:3001'],
   credentials: true
 }));
 
