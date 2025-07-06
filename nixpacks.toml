@@ -5,7 +5,7 @@ nixPkgs = ["nodejs_18", "ffmpeg"]
 cmds = [
   "npm install",
   "cd frontend && npm install", 
-  "cd backend && npm install"
+  "cd backend && YOUTUBE_DL_SKIP_PYTHON_CHECK=1 npm install"
 ]
 
 [phases.build]
@@ -17,4 +17,5 @@ cmds = [
 cmd = "npm start"
 
 [variables]
-NODE_ENV = "production" 
+NODE_ENV = "production"
+YOUTUBE_DL_SKIP_PYTHON_CHECK = "1" 
