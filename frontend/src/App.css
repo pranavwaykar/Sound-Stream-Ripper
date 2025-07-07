@@ -1140,3 +1140,45 @@ body::before {
     transform: translateY(-2px);
   }
 }
+
+/* Status-specific styling for integrated download */
+.status-downloading {
+  background: linear-gradient(45deg, #ff6b35, #f59e0b) !important;
+  animation: downloadingPulse 2s ease-in-out infinite;
+}
+
+.status-downloaded {
+  background: linear-gradient(45deg, #059669, #10b981) !important;
+  animation: downloadedGlow 3s ease-in-out infinite;
+}
+
+.status-download-failed {
+  background: linear-gradient(45deg, #dc2626, #ef4444) !important;
+  animation: errorShake 0.5s ease-in-out;
+}
+
+@keyframes downloadingPulse {
+  0%, 100% { 
+    transform: scale(1);
+    box-shadow: 0 0 20px rgba(245, 158, 11, 0.3);
+  }
+  50% { 
+    transform: scale(1.05);
+    box-shadow: 0 0 30px rgba(245, 158, 11, 0.5);
+  }
+}
+
+@keyframes downloadedGlow {
+  0%, 100% { 
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);
+  }
+  50% { 
+    box-shadow: 0 0 40px rgba(16, 185, 129, 0.6);
+  }
+}
+
+@keyframes errorShake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  75% { transform: translateX(5px); }
+}

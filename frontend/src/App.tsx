@@ -96,8 +96,15 @@ function App() {
           
           setDownloadStatus(statusData);
           
-          if (statusData.status === 'completed' || statusData.status === 'error' || statusData.status === 'failed') {
-            console.log('🎉 Download completed, stopping polling');
+          if (statusData.status === 'completed') {
+            console.log('🎉 Download completed, auto-downloading file...');
+            clearInterval(pollInterval);
+            setIsLoading(false);
+            
+            // Automatically download the file when processing is completed
+            await autoDownloadFile(statusData.id);
+          } else if (statusData.status === 'error' || statusData.status === 'failed') {
+            console.log('❌ Download failed, stopping polling');
             clearInterval(pollInterval);
             setIsLoading(false);
           }
@@ -126,7 +133,10 @@ function App() {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'completed': return 'bg-success';
+      case 'completed': return 'bg-info';
+      case 'downloading': return 'bg-warning';
+      case 'downloaded': return 'bg-success';
+      case 'download_failed':
       case 'failed': 
       case 'error': return 'bg-danger';
       case 'processing': 
@@ -139,18 +149,26 @@ function App() {
     switch (status) {
       case 'started': return 'INITIALIZING...';
       case 'processing': return 'PROCESSING...';
-      case 'completed': return 'COMPLETED';
+      case 'completed': return 'PROCESSING COMPLETED';
+      case 'downloading': return 'DOWNLOADING TO DEVICE...';
+      case 'downloaded': return 'DOWNLOADED SUCCESSFULLY';
+      case 'download_failed': return 'DOWNLOAD FAILED';
       case 'error': return 'ERROR';
       case 'failed': return 'FAILED';
       default: return status.toUpperCase();
     }
   };
 
-  const handleDownload = async () => {
-    if (!downloadStatus?.id) return;
-    
+  const autoDownloadFile = async (downloadId: string) => {
     try {
-      const response = await fetch(`http://localhost:5001/api/download/${downloadStatus.id}/file`);
+      // Update status to show file is being downloaded
+      setDownloadStatus(prev => prev ? {
+        ...prev,
+        message: 'Downloading file to your device...',
+        status: 'downloading'
+      } : null);
+
+      const response = await fetch(`http://localhost:5001/api/download/${downloadId}/file`);
       
       if (!response.ok) {
         throw new Error('Failed to download file');
@@ -174,9 +192,22 @@ function App() {
       document.body.removeChild(a);
       
       console.log(`📥 Downloaded: ${filename}`);
+      
+      // Update status to show download completed
+      setDownloadStatus(prev => prev ? {
+        ...prev,
+        message: `File downloaded successfully: ${filename}`,
+        status: 'downloaded'
+      } : null);
+      
     } catch (error) {
       console.error('Download failed:', error);
-      alert('Download failed. Please try again.');
+      setDownloadStatus(prev => prev ? {
+        ...prev,
+        message: 'Failed to download file to your device',
+        status: 'download_failed',
+        errors: [...(prev.errors || []), error instanceof Error ? error.message : 'Download failed']
+      } : null);
     }
   };
 
@@ -261,12 +292,12 @@ function App() {
               {isLoading ? (
                 <>
                   <span className="spinner-border spinner-border-sm me-2" />
-                  Processing...
+                  Processing & Downloading...
                 </>
               ) : (
                 <>
                   <i className="fas fa-download me-2"></i>
-                  Download
+                  Download & Save to Device
                 </>
               )}
             </button>
@@ -331,25 +362,17 @@ function App() {
                 </div>
               )}
 
-              {downloadStatus.status === 'completed' && (
+              {(downloadStatus.status === 'completed' || downloadStatus.status === 'downloading' || downloadStatus.status === 'downloaded') && (
                 <div className="mt-3">
-                  <div className="alert alert-success">
-                    <i className="fas fa-check-circle me-2"></i>
-                    Download completed successfully! 
+                  <div className={`alert ${downloadStatus.status === 'downloaded' ? 'alert-success' : 'alert-info'}`}>
+                    <i className={`fas ${downloadStatus.status === 'downloaded' ? 'fa-check-circle' : 'fa-info-circle'} me-2`}></i>
+                    {downloadStatus.status === 'completed' && 'Processing completed! Starting download...'}
+                    {downloadStatus.status === 'downloading' && 'Downloading file to your device...'}
+                    {downloadStatus.status === 'downloaded' && 'File downloaded successfully to your device!'}
                     {downloadStatus.completed > 0 && (
-                      <span> ({downloadStatus.completed} file{downloadStatus.completed > 1 ? 's' : ''} downloaded)</span>
+                      <span> ({downloadStatus.completed} file{downloadStatus.completed > 1 ? 's' : ''} processed)</span>
                     )}
-                                      </div>
-                   {downloadStatus.status === 'completed' && (
-                     <button
-                       type="button"
-                       className="btn btn-download w-100 mt-3"
-                       onClick={handleDownload}
-                     >
-                       <i className="fas fa-download me-2"></i>
-                       Save To Your Device
-                     </button>
-                   )}
+                  </div>
                 </div>
               )}
             </div>
