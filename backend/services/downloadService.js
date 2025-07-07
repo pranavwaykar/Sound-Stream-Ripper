@@ -108,10 +108,7 @@ class DownloadService {
           '--prefer-free-formats'
         ];
 
-        console.log('Executing:', ytDlpPath);
-        console.log('Args:', args);
-        console.log('Working directory:', absoluteOutputPath);
-        console.log('Output template:', outputTemplate);
+
         
         const ytDlpProcess = spawn(ytDlpPath, args, {
           cwd: absoluteOutputPath,
@@ -123,17 +120,14 @@ class DownloadService {
 
         ytDlpProcess.stdout.on('data', (data) => {
           stdout += data.toString();
-          console.log('yt-dlp stdout:', data.toString().trim());
         });
 
         ytDlpProcess.stderr.on('data', (data) => {
           stderr += data.toString();
-          console.log('yt-dlp stderr:', data.toString().trim());
         });
 
         ytDlpProcess.on('close', (code) => {
           if (code === 0) {
-            console.log('Download completed successfully');
             resolve({ skipped: false, filePath: finalFilePath });
           } else {
             console.error(`yt-dlp process exited with code ${code}`);
@@ -193,8 +187,6 @@ class DownloadService {
       const success = NodeID3.write(tags, filePath);
       if (!success) {
         console.warn('Failed to write metadata to file:', filePath);
-      } else {
-        console.log('Metadata written successfully for:', path.basename(filePath));
       }
     } catch (error) {
       console.error('Metadata error:', error);

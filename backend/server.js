@@ -21,7 +21,8 @@ app.use(cors({
         /\.vercel\.app$/
       ].filter(Boolean)
     : ['http://localhost:3000', 'http://localhost:3001'],
-  credentials: true
+  credentials: true,
+  exposedHeaders: ['Content-Disposition', 'Content-Length', 'Content-Type']
 }));
 
 // Body parsing middleware
@@ -174,8 +175,7 @@ app.get('/api/download/:id/status', (req, res) => {
     });
   }
   
-  // Log the status request for debugging
-  console.log(`📊 Status request for ${id}: ${downloadState.status}`);
+
   
   res.json(downloadState);
 });
@@ -231,7 +231,7 @@ app.get('/api/download/:id/file', (req, res) => {
     });
   }
   
-  console.log(`📥 Serving download for ${fileName}`);
+
   
   // Set appropriate headers for download
   res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
@@ -348,12 +348,12 @@ app.use('*', (req, res) => {
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`🚀 Sound Stream Ripper API running on port ${PORT}`);
-  console.log(`📁 Downloads will be saved to: ${downloadsDir}`);
-  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`Sound Stream Ripper API running on port ${PORT}`);
+  console.log(`Downloads will be saved to: ${downloadsDir}`);
+  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
   
   if (process.env.NODE_ENV === 'production') {
-    console.log(`🌐 Serving React app from: ${path.join(__dirname, '../frontend/build')}`);
+    console.log(`Serving React app from: ${path.join(__dirname, '../frontend/build')}`);
   }
 });
 

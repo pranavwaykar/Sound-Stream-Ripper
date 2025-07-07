@@ -91,20 +91,17 @@ function App() {
           }
           const statusData = await statusResponse.json();
           
-          // Debug logging
-          console.log('📊 Frontend received status:', statusData);
+
           
           setDownloadStatus(statusData);
           
           if (statusData.status === 'completed') {
-            console.log('🎉 Download completed, auto-downloading file...');
             clearInterval(pollInterval);
             setIsLoading(false);
             
             // Automatically download the file when processing is completed
             await autoDownloadFile(statusData.id);
           } else if (statusData.status === 'error' || statusData.status === 'failed') {
-            console.log('❌ Download failed, stopping polling');
             clearInterval(pollInterval);
             setIsLoading(false);
           }
@@ -176,9 +173,42 @@ function App() {
       
       // Get the filename from the response headers
       const contentDisposition = response.headers.get('Content-Disposition');
-      const filename = contentDisposition 
-        ? contentDisposition.split('filename=')[1]?.replace(/"/g, '') 
-        : 'download.mp3';
+      
+      let filename = 'download.mp3';
+      if (contentDisposition) {
+        // Try multiple methods to extract filename
+        // Method 1: RFC 6266 compliant regex
+        let match = contentDisposition.match(/filename\*?=['"]?([^'";]+)['"]?/i);
+        if (match && match[1]) {
+          filename = decodeURIComponent(match[1]);
+        } else {
+          // Method 2: Simple split on filename=
+          const parts = contentDisposition.split('filename=');
+          if (parts.length > 1) {
+            filename = parts[1].replace(/['"]/g, '').trim();
+          } else {
+            // Method 3: Try to find any quoted string
+            match = contentDisposition.match(/"([^"]+)"/);
+            if (match && match[1]) {
+              filename = match[1];
+            }
+          }
+        }
+      } else {
+        // Fallback: try to get filename from download status
+        try {
+          const statusResponse = await fetch(`http://localhost:5001/api/download/${downloadId}/status`);
+          if (statusResponse.ok) {
+            const statusData = await statusResponse.json();
+            if (statusData.completedFiles && statusData.completedFiles.length > 0) {
+              const filePath = statusData.completedFiles[0];
+              filename = filePath.split('/').pop() || 'download.mp3';
+            }
+          }
+        } catch (fallbackError) {
+          console.error('Could not get filename from status:', fallbackError);
+        }
+      }
       
       // Create blob and download
       const blob = await response.blob();
@@ -191,7 +221,7 @@ function App() {
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
       
-      console.log(`📥 Downloaded: ${filename}`);
+
       
       // Update status to show download completed
       setDownloadStatus(prev => prev ? {
@@ -199,6 +229,8 @@ function App() {
         message: `File downloaded successfully: ${filename}`,
         status: 'downloaded'
       } : null);
+      
+
       
     } catch (error) {
       console.error('Download failed:', error);
