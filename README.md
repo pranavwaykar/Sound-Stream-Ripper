@@ -16,7 +16,11 @@ A modern Node.js + React application that downloads music from Spotify URLs by f
 
 Watch a quick demo of the application in action:
 
-https://github.com/pranavwaykar/Sound-Stream-Ripper/assets/demo.mov
+
+https://github.com/user-attachments/assets/f277420e-22a7-4d71-b9f2-445b3463adc3
+
+
+
 
 The screen recording demonstrates:
 - The modern, responsive UI
